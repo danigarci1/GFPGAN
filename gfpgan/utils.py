@@ -9,6 +9,7 @@ from torchvision.transforms.functional import normalize
 from gfpgan.archs.gfpgan_bilinear_arch import GFPGANBilinear
 from gfpgan.archs.gfpganv1_arch import GFPGANv1
 from gfpgan.archs.gfpganv1_clean_arch import GFPGANv1Clean
+import onnxruntime as ort
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -94,9 +95,11 @@ class GFPGANer():
             keyname = 'params_ema'
         else:
             keyname = 'params'
-        self.gfpgan.load_state_dict(loadnet[keyname], strict=True)
-        self.gfpgan.eval()
-        self.gfpgan = self.gfpgan.to(self.device)
+        self.gfpgan_onnx = ort.InferenceSession(model_path)
+
+        # self.gfpgan.load_state_dict(loadnet[keyname], strict=True)
+        # self.gfpgan.eval()
+        # self.gfpgan = self.gfpgan.to(self.device)
 
     @torch.no_grad()
     def enhance(self, img, has_aligned=False, only_center_face=False, paste_back=True, weight=0.5):
@@ -122,7 +125,9 @@ class GFPGANer():
             cropped_face_t = cropped_face_t.unsqueeze(0).to(self.device)
 
             try:
-                output = self.gfpgan(cropped_face_t, return_rgb=False, weight=weight)[0]
+                # ONNX Runtime Inference
+                input_name = self.gfpgan_onnx_session.get_inputs()[0].name
+                output = self.gfpgan_onnx_session.run(None, {input_name: cropped_face_t})[0]
                 # convert to image
                 restored_face = tensor2img(output.squeeze(0), rgb2bgr=True, min_max=(-1, 1))
             except RuntimeError as error:
