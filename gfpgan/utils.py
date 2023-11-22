@@ -33,7 +33,7 @@ class GFPGANer():
     def __init__(self, model_path, upscale=2, arch='clean', channel_multiplier=2, bg_upsampler=None, device=None):
         self.upscale = upscale
         self.bg_upsampler = bg_upsampler
-
+        self.face_size = 512
         # initialize model
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') if device is None else device
         # initialize the GFP-GAN
@@ -119,32 +119,8 @@ class GFPGANer():
         output = output.transpose(1, 2, 0)
         output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
         output = (output * 255.0).round()
-        if self.affine:
-            inverse_affine = cv2.invertAffineTransform(self.affine_matrix)
-            inverse_affine *= self.upscale_factor
-            if self.upscale_factor > 1:
-                extra_offset = 0.5 * self.upscale_factor
-            else:
-                extra_offset = 0
-            inverse_affine[:, 2] += extra_offset
-            inv_restored = cv2.warpAffine(output, inverse_affine, (width, height))
-            mask = np.ones((self.face_size, self.face_size), dtype=np.float32)
-            inv_mask = cv2.warpAffine(mask, inverse_affine, (width, height))
-            inv_mask_erosion = cv2.erode(
-                inv_mask, np.ones((int(2 * self.upscale_factor), int(2 * self.upscale_factor)), np.uint8))
-            pasted_face = inv_mask_erosion[:, :, None] * inv_restored
-            total_face_area = np.sum(inv_mask_erosion)
-            # compute the fusion edge based on the area of face
-            w_edge = int(total_face_area**0.5) // 20
-            erosion_radius = w_edge * 2
-            inv_mask_center = cv2.erode(inv_mask_erosion, np.ones((erosion_radius, erosion_radius), np.uint8))
-            blur_size = w_edge * 2
-            inv_soft_mask = cv2.GaussianBlur(inv_mask_center, (blur_size + 1, blur_size + 1), 0)
-            inv_soft_mask = inv_soft_mask[:, :, None]
-            output = pasted_face
-        else:
-            inv_soft_mask = np.ones((height, width, 1), dtype=np.float32)
-            output = cv2.resize(output, (width, height))
+        inv_soft_mask = np.ones((height, width, 1), dtype=np.float32)
+        output = cv2.resize(output, (width, height))
         return output, inv_soft_mask
 
     @torch.no_grad()
