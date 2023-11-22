@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 import os
 import torch
 from basicsr.utils import img2tensor, tensor2img
