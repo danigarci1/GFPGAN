@@ -101,6 +101,51 @@ class GFPGANer():
         # self.gfpgan.load_state_dict(loadnet[keyname], strict=True)
         # self.gfpgan.eval()
         # self.gfpgan = self.gfpgan.to(self.device)
+    def pre_process(self, img):
+        img = cv2.resize(img, (int(img.shape[1] / 2), int(img.shape[0] / 2)))
+        img = cv2.resize(img, (self.face_size, self.face_size))
+        img = img / 255.0
+        img = img.astype('float32')
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img[:,:,0] = (img[:,:,0]-0.5)/0.5
+        img[:,:,1] = (img[:,:,1]-0.5)/0.5
+        img[:,:,2] = (img[:,:,2]-0.5)/0.5
+        img = np.float32(img[np.newaxis,:,:,:])
+        img = img.transpose(0, 3, 1, 2)
+        return img
+    def post_process(self, output, height, width):
+        output = output.clip(-1,1)
+        output = (output + 1) / 2
+        output = output.transpose(1, 2, 0)
+        output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
+        output = (output * 255.0).round()
+        if self.affine:
+            inverse_affine = cv2.invertAffineTransform(self.affine_matrix)
+            inverse_affine *= self.upscale_factor
+            if self.upscale_factor > 1:
+                extra_offset = 0.5 * self.upscale_factor
+            else:
+                extra_offset = 0
+            inverse_affine[:, 2] += extra_offset
+            inv_restored = cv2.warpAffine(output, inverse_affine, (width, height))
+            mask = np.ones((self.face_size, self.face_size), dtype=np.float32)
+            inv_mask = cv2.warpAffine(mask, inverse_affine, (width, height))
+            inv_mask_erosion = cv2.erode(
+                inv_mask, np.ones((int(2 * self.upscale_factor), int(2 * self.upscale_factor)), np.uint8))
+            pasted_face = inv_mask_erosion[:, :, None] * inv_restored
+            total_face_area = np.sum(inv_mask_erosion)
+            # compute the fusion edge based on the area of face
+            w_edge = int(total_face_area**0.5) // 20
+            erosion_radius = w_edge * 2
+            inv_mask_center = cv2.erode(inv_mask_erosion, np.ones((erosion_radius, erosion_radius), np.uint8))
+            blur_size = w_edge * 2
+            inv_soft_mask = cv2.GaussianBlur(inv_mask_center, (blur_size + 1, blur_size + 1), 0)
+            inv_soft_mask = inv_soft_mask[:, :, None]
+            output = pasted_face
+        else:
+            inv_soft_mask = np.ones((height, width, 1), dtype=np.float32)
+            output = cv2.resize(output, (width, height))
+        return output, inv_soft_mask
 
     @torch.no_grad()
     def enhance(self, img, has_aligned=False, only_center_face=False, paste_back=True, weight=0.5):
@@ -120,17 +165,18 @@ class GFPGANer():
 
         # face restoration
         for cropped_face in self.face_helper.cropped_faces:
+            
             # prepare data
-            cropped_face_t = img2tensor(cropped_face / 255., bgr2rgb=True, float32=True)
-            normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
-            cropped_face_t = cropped_face_t.unsqueeze(0).to(self.device)
+            # cropped_face_t = img2tensor(cropped_face / 255., bgr2rgb=True, float32=True)
+            # normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
+            cropped_face_t = self.pre_process(cropped_face)
 
             try:
                 # ONNX Runtime Inference
                 input_name = self.gfpgan_onnx.get_inputs()[0].name
                 output = self.gfpgan_onnx.run(None, {input_name: cropped_face_t})[0]
                 # convert to image
-                restored_face = tensor2img(output.squeeze(0), rgb2bgr=True, min_max=(-1, 1))
+                restored_face = self.post_process(output)[0]
             except RuntimeError as error:
                 print(f'\tFailed inference for GFPGAN: {error}.')
                 restored_face = cropped_face
