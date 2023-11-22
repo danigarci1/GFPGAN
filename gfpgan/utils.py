@@ -127,8 +127,8 @@ class GFPGANer():
 
             try:
                 # ONNX Runtime Inference
-                input_name = self.gfpgan_onnx_session.get_inputs()[0].name
-                output = self.gfpgan_onnx_session.run(None, {input_name: cropped_face_t})[0]
+                input_name = self.gfpgan_onnx.get_inputs()[0].name
+                output = self.gfpgan_onnx.run(None, {input_name: cropped_face_t})[0]
                 # convert to image
                 restored_face = tensor2img(output.squeeze(0), rgb2bgr=True, min_max=(-1, 1))
             except RuntimeError as error:
