@@ -152,7 +152,7 @@ class GFPGANer():
             try:
                 # ONNX Runtime Inference
                 input_name = self.gfpgan_onnx.get_inputs()[0].name
-                output = self.gfpgan_onnx.run(None, {input_name: cropped_face_t})[0]
+                output = self.gfpgan_onnx.run(None, {input_name: cropped_face_t})[0][0]
                 # convert to image
                 restored_face = self.post_process(output,height, width)[0]
             except RuntimeError as error:
