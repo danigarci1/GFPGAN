@@ -95,7 +95,8 @@ class GFPGANer():
         #     keyname = 'params_ema'
         # else:
         #     keyname = 'params'
-        self.gfpgan_onnx = ort.InferenceSession(model_path)
+        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        self.gfpgan_onnx = ort.InferenceSession(model_path,providers=providers)
 
         # self.gfpgan.load_state_dict(loadnet[keyname], strict=True)
         # self.gfpgan.eval()
