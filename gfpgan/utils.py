@@ -146,6 +146,7 @@ class GFPGANer():
             # prepare data
             # cropped_face_t = img2tensor(cropped_face / 255., bgr2rgb=True, float32=True)
             # normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
+            height, width = cropped_face.shape[0], cropped_face.shape[1]
             cropped_face_t = self.pre_process(cropped_face)
 
             try:
@@ -153,7 +154,7 @@ class GFPGANer():
                 input_name = self.gfpgan_onnx.get_inputs()[0].name
                 output = self.gfpgan_onnx.run(None, {input_name: cropped_face_t})[0]
                 # convert to image
-                restored_face = self.post_process(output)[0]
+                restored_face = self.post_process(output,height, width)[0]
             except RuntimeError as error:
                 print(f'\tFailed inference for GFPGAN: {error}.')
                 restored_face = cropped_face
